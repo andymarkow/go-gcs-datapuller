@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 
 	"github.com/andymarkow/go-gcs-datapuller/internal/app"
@@ -9,18 +10,18 @@ import (
 func main() {
 	a, err := app.NewApp()
 	if err != nil {
-		log.Fatalf("app.NewApp: %v", err)
+		log.Fatalf("init: %v", errors.Unwrap(err))
 	}
 
 	if err := a.Start(); err != nil {
 		if err := a.Shutdown(); err != nil {
-			log.Fatalf("app.Shutdown: %v", err)
+			log.Fatalf("shutdown: %v", errors.Unwrap(err))
 		}
 
-		log.Fatalf("app.Start: %v", err)
+		log.Fatalf("startup: %v", err)
 	}
 
 	if err := a.Shutdown(); err != nil {
-		log.Fatalf("app.Shutdown: %v", err)
+		log.Fatalf("shutdown: %v", err)
 	}
 }

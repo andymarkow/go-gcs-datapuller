@@ -11,6 +11,7 @@ import (
 	"github.com/andymarkow/go-gcs-datapuller/internal/config"
 	"github.com/andymarkow/go-gcs-datapuller/internal/datapuller"
 	"github.com/andymarkow/go-gcs-datapuller/internal/logger"
+	"github.com/andymarkow/go-gcs-datapuller/internal/storage/gcsstorage"
 )
 
 // App represents the application.
@@ -36,7 +37,13 @@ func NewApp() (*App, error) {
 		logger.WithFormat(logger.LogFormat(cfg.LogFormat)),
 	)
 
+	store, err := gcsstorage.NewStorage(context.Background(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("gcsstorage.NewStorage: %w", err)
+	}
+
 	puller, err := datapuller.NewDataPuller(
+		store,
 		cfg.GCSBucketName,
 		datapuller.WithLogger(l),
 		datapuller.WithBucketPrefix(cfg.GCSBucketPrefix),

@@ -11,17 +11,17 @@ import (
 	"google.golang.org/api/option"
 )
 
-// GCSStorage represents the Google Cloud Storage client.
-type GCSStorage struct {
+// Storage represents the Google Cloud Storage client.
+type Storage struct {
 	client *storage.Client
 }
 
-// NewGCSStorage creates a new Google Cloud Storage instance.
-func NewGCSStorage(ctx context.Context, creds []byte) (*GCSStorage, error) {
+// NewStorage creates a new Google Cloud Storage instance.
+func NewStorage(ctx context.Context, credentials []byte) (*Storage, error) {
 	var storageOpts []option.ClientOption
 
-	if len(creds) > 0 {
-		storageOpts = append(storageOpts, option.WithCredentialsJSON(creds))
+	if len(credentials) > 0 {
+		storageOpts = append(storageOpts, option.WithCredentialsJSON(credentials))
 	}
 
 	client, err := storage.NewClient(ctx, storageOpts...)
@@ -29,13 +29,13 @@ func NewGCSStorage(ctx context.Context, creds []byte) (*GCSStorage, error) {
 		return nil, fmt.Errorf("storage.NewClient: %w", err)
 	}
 
-	return &GCSStorage{
+	return &Storage{
 		client: client,
 	}, nil
 }
 
 // Close closes the Google Cloud Storage client.
-func (s *GCSStorage) Close() error {
+func (s *Storage) Close() error {
 	if err := s.client.Close(); err != nil {
 		return fmt.Errorf("client.Close: %w", err)
 	}
@@ -44,7 +44,7 @@ func (s *GCSStorage) Close() error {
 }
 
 // ListObjects returns all objects in the storage bucket by query.
-func (s *GCSStorage) ListObjects(ctx context.Context, bucketName string, query *storage.Query) ([]StorageObject, error) {
+func (s *Storage) ListObjects(ctx context.Context, bucketName string, query *storage.Query) ([]StorageObject, error) {
 	objects := make([]StorageObject, 0)
 
 	it := s.client.Bucket(bucketName).Objects(ctx, query)
@@ -68,7 +68,7 @@ func (s *GCSStorage) ListObjects(ctx context.Context, bucketName string, query *
 	return objects, nil
 }
 
-func (s *GCSStorage) ReadObject(ctx context.Context, obj StorageObject) (io.ReadCloser, error) {
+func (s *Storage) ReadObject(ctx context.Context, obj StorageObject) (io.ReadCloser, error) {
 	rd, err := s.client.Bucket(obj.Bucket()).Object(obj.Name()).NewReader(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("client.Bucket(%q).Object(%q).NewReader: %w", obj.Bucket(), obj.Name(), err)

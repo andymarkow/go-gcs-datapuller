@@ -7,7 +7,7 @@
 .EXPORT_ALL_VARIABLES:
 
 LOG_LEVEL=debug
-GCS_BUCKET_NAME=965988061641-bucharest5-sbs-savegame
+GCS_BUCKET_NAME=
 READ_INTERVAL=15s
 READ_TIMEOUT=15s
 
@@ -41,3 +41,11 @@ coverage:
 	go tool cover -func=.coverage.cov
 	go tool cover -html=.coverage.cov
 	rm .coverage.cov
+
+docker-build:
+	docker build -f Dockerfile -t datapuller:latest .
+
+docker-run:
+	docker run --rm --name="datapuller" \
+		-e GCS_BUCKET_NAME=$(GCS_BUCKET_NAME) \
+		datapuller:latest

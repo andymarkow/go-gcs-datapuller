@@ -15,7 +15,7 @@ import (
 
 type DataPuller struct {
 	log          *slog.Logger
-	storage      *gcsstorage.GCSStorage
+	storage      *gcsstorage.Storage
 	bucketName   string
 	bucketPrefix string
 	destDir      string
@@ -24,12 +24,7 @@ type DataPuller struct {
 	readTimeout  time.Duration
 }
 
-func NewDataPuller(bucketName string, opts ...Option) (*DataPuller, error) {
-	store, err := gcsstorage.NewGCSStorage(context.Background(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("gcsstorage.NewGCSStorage: %w", err)
-	}
-
+func NewDataPuller(store *gcsstorage.Storage, bucketName string, opts ...Option) (*DataPuller, error) {
 	dp := &DataPuller{
 		log:          slog.Default(),
 		storage:      store,
@@ -189,8 +184,6 @@ func (d *DataPuller) pullObjectsList(ctx context.Context) ([]gcsstorage.StorageO
 }
 
 func (d *DataPuller) runWorker(ctx context.Context, wg *sync.WaitGroup, objs <-chan gcsstorage.StorageObject) {
-	//TODO: implement.
-
 	defer wg.Done()
 
 	for {
