@@ -17,12 +17,13 @@ all: fmt tidy lint
 
 fmt:
 	go fmt ./...
+	$(HOME)/go/bin/goimports -l -w --local "github.com/andymarkow/go-gcs-datapuller" .
 
 tidy:
 	go mod tidy
 
 run:
-	go run ./cmd/app
+	go run ./cmd/datapuller
 
 vet:
 	go vet ./...

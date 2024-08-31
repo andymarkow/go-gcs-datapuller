@@ -2,14 +2,19 @@ package datapuller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/storage"
+
 	"github.com/andymarkow/go-gcs-datapuller/internal/storage/gcsstorage"
 )
 
@@ -192,11 +197,98 @@ func (d *DataPuller) runWorker(ctx context.Context, wg *sync.WaitGroup, objs <-c
 			return
 
 		case obj := <-objs:
-			d.log.Info("Pulling object", slog.String("name", obj.Name()), slog.Uint64("crc32c", uint64(obj.CRC32C())))
+			// Trim destination directory OS-specific path separator if any.
+			destDirPath := strings.TrimRight(d.destDir, string(os.PathSeparator))
+
+			// Concatenate full file path.
+			filePath := filepath.Join(destDirPath, string(os.PathSeparator), obj.Name())
+
+			fileExists, err := isFileExists(filePath)
+			if err != nil {
+				d.log.Error("isFileExists", slog.Any("error", err))
+
+				continue
+			}
+
+			if fileExists {
+				d.log.Debug("File already exists", slog.String("file", obj.Name()))
+
+				d.log.Debug("Calculating file hashsum", slog.String("file", obj.Name()))
+
+				isEqual, err := compareFileHashsum(filePath, obj.CRC32C())
+				if err != nil {
+					d.log.Error("failed to compare file hashsum with the object", slog.Any("error", err))
+
+					continue
+				}
+
+				if isEqual {
+					d.log.Debug("File hashsums match. Skipping download", slog.String("file", obj.Name()), slog.Uint64("crc32c", uint64(obj.CRC32C())))
+
+					continue
+				}
+			} else {
+				d.log.Debug("File does not exist", slog.String("file", obj.Name()))
+
+				// Create destination directory if not exists.
+				if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+					d.log.Error("os.MkdirAll", slog.Any("error", err))
+				}
+			}
+
+			f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				d.log.Error("os.OpenFile", slog.Any("error", err))
+
+				continue
+			}
+
+			d.log.Debug("Proceeding with file download", slog.String("file", obj.Name()))
+
+			ctxCancel, cancel := context.WithTimeout(ctx, d.readTimeout)
+
+			if err := d.storage.ReadObject(ctxCancel, f, obj); err != nil {
+				d.log.Error("ReadObject", slog.Any("error", err))
+
+				cancel()
+
+				continue
+			}
+
+			cancel()
+
+			f.Close()
 		}
 	}
 }
 
+// isFileExists checks if a file exists at the given path.
+//
+// It returns true and nil if the file exists, false and nil if the file does not exist,
+// and false and error if an error occurs during file existence check.
+//
+// The function performs a file existence check using os.Stat and errors.Is.
+// If the file exists, it returns true and nil. If the file does not exist,
+// it returns false and nil. If an error occurs during file existence check,
+// it returns false and the error.
+func isFileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("os.Stat: %w", err)
+}
+
+// getCRC32hashsum calculates the CRC32 hashsum of a given io.Reader.
+//
+// The function returns the hashsum as a uint32 and an error if any.
+//
+// The function uses the Castagnoli CRC32 polynomial.
 func getCRC32hashsum(rd io.Reader) (uint32, error) {
 	// Create a CRC32 hash table.
 	table := crc32.MakeTable(crc32.Castagnoli)
@@ -210,4 +302,25 @@ func getCRC32hashsum(rd io.Reader) (uint32, error) {
 	}
 
 	return hash.Sum32(), nil
+}
+
+// compareFileHashsum compares the hashsum of a given file with the given crc32c value.
+//
+// The function opens a file at the given filePath, calculates its hashsum and compares it
+// with the given crc32c value. If the hashsums match, the function returns true, nil.
+// If the hashsums don't match, or an error occurs during file opening or hashsum calculation,
+// the function returns false, error.
+func compareFileHashsum(filePath string, crc32c uint32) (bool, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return false, fmt.Errorf("os.Open: %w", err)
+	}
+	defer f.Close()
+
+	fileHashSum, err := getCRC32hashsum(f)
+	if err != nil {
+		return false, fmt.Errorf("failed to calculate file hashsum: %w", err)
+	}
+
+	return fileHashSum == crc32c, nil
 }

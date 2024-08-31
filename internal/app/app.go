@@ -11,12 +11,14 @@ import (
 	"github.com/andymarkow/go-gcs-datapuller/internal/config"
 	"github.com/andymarkow/go-gcs-datapuller/internal/datapuller"
 	"github.com/andymarkow/go-gcs-datapuller/internal/logger"
+	"github.com/andymarkow/go-gcs-datapuller/internal/server"
 	"github.com/andymarkow/go-gcs-datapuller/internal/storage/gcsstorage"
 )
 
 // App represents the application.
 type App struct {
 	log    *slog.Logger
+	server *server.Server
 	puller *datapuller.DataPuller
 }
 
@@ -55,14 +57,28 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("datapuller.NewDataPuller: %w", err)
 	}
 
+	srv := server.NewServer(
+		server.WithLogger(l),
+		server.WithServerAddr(cfg.ServerAddr),
+	)
+
 	return &App{
 		log:    l,
+		server: srv,
 		puller: puller,
 	}, nil
 }
 
 // Start starts the application.
 func (a *App) Start() error {
+	errChan := make(chan error, 1)
+
+	go func() {
+		if err := a.server.Start(); err != nil {
+			errChan <- fmt.Errorf("server.Start: %w", err)
+		}
+	}()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -74,8 +90,13 @@ func (a *App) Start() error {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-	<-quit
-	a.log.Info("Termination signal received")
+	select {
+	case <-quit:
+		a.log.Info("Termination signal received")
+
+	case err := <-errChan:
+		a.log.Error("Server error", slog.Any("error", err))
+	}
 
 	cancel()
 

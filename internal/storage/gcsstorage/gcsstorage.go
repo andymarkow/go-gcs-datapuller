@@ -68,11 +68,15 @@ func (s *Storage) ListObjects(ctx context.Context, bucketName string, query *sto
 	return objects, nil
 }
 
-func (s *Storage) ReadObject(ctx context.Context, obj StorageObject) (io.ReadCloser, error) {
+func (s *Storage) ReadObject(ctx context.Context, w io.Writer, obj StorageObject) error {
 	rd, err := s.client.Bucket(obj.Bucket()).Object(obj.Name()).NewReader(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("client.Bucket(%q).Object(%q).NewReader: %w", obj.Bucket(), obj.Name(), err)
+		return fmt.Errorf("client.Bucket(%q).Object(%q).NewReader: %w", obj.Bucket(), obj.Name(), err)
 	}
 
-	return rd, nil
+	if _, err := io.Copy(w, rd); err != nil {
+		return fmt.Errorf("io.Copy: %w", err)
+	}
+
+	return nil
 }
